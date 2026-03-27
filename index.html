@@ -60,13 +60,16 @@
   .legend-dot.green { background: #2d8a4e; }
   .legend-dot.black { background: #1a1a1a; }
 
-  /* Desktop: grid layout as before */
-  .calendar-grid {
+  .calendar-viewport {
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  /* Desktop: grid layout */
+  .calendar-track {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
     gap: 1.5rem;
-    max-width: 1200px;
-    margin: 0 auto;
   }
 
   .month-card {
@@ -113,9 +116,7 @@
     color: #888;
   }
 
-  .day.current-month {
-    color: #333;
-  }
+  .day.current-month { color: #333; }
 
   .day.green-bin {
     background: #2d8a4e;
@@ -174,22 +175,22 @@
 
   .next-wrapper { text-align: center; }
 
-  /* Mobile swipe navigation */
-  .month-nav {
-    display: none;
-  }
+  .month-nav { display: none; }
+  .swipe-hint { display: none; }
 
   @media (max-width: 600px) {
-    .calendar-grid {
-      display: flex;
+    .calendar-viewport {
       overflow: hidden;
-      position: relative;
+    }
+
+    .calendar-track {
+      display: flex;
+      will-change: transform;
     }
 
     .month-card {
       min-width: 100%;
       flex-shrink: 0;
-      will-change: transform;
     }
 
     .month-nav {
@@ -212,17 +213,10 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      transition: border-color 0.2s, background 0.2s;
     }
 
-    .month-nav button:active {
-      background: #e8e8e8;
-    }
-
-    .month-nav button:disabled {
-      opacity: 0.3;
-      cursor: default;
-    }
+    .month-nav button:active { background: #e8e8e8; }
+    .month-nav button:disabled { opacity: 0.3; }
 
     .month-nav .month-indicator {
       font-weight: 600;
@@ -231,15 +225,12 @@
     }
 
     .swipe-hint {
+      display: block;
       text-align: center;
       color: #aaa;
       font-size: 0.75rem;
       margin-bottom: 0.5rem;
     }
-  }
-
-  @media (min-width: 601px) {
-    .swipe-hint { display: none; }
   }
 </style>
 </head>
@@ -262,7 +253,9 @@
 </div>
 <p class="swipe-hint">Swipe left or right to change month</p>
 
-<div class="calendar-grid" id="calendar"></div>
+<div class="calendar-viewport">
+  <div class="calendar-track" id="calendar"></div>
+</div>
 
 <p class="note">
   <span>*</span> Bank holiday &mdash; collection may be on a different day of the week.<br>
@@ -328,13 +321,11 @@ const dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 const today = new Date();
 const todayKey = toKey(today.getFullYear(), today.getMonth()+1, today.getDate());
 
-const calendarEl = document.getElementById('calendar');
-const cards = [];
+const track = document.getElementById('calendar');
 
-months.forEach(([year, month], idx) => {
+months.forEach(([year, month]) => {
   const card = document.createElement('div');
   card.className = 'month-card';
-  card.dataset.index = idx;
 
   const title = document.createElement('div');
   title.className = 'month-title';
@@ -380,8 +371,7 @@ months.forEach(([year, month], idx) => {
   }
 
   card.appendChild(grid);
-  calendarEl.appendChild(card);
-  cards.push(card);
+  track.appendChild(card);
 });
 
 // Next collection banner
@@ -407,116 +397,106 @@ if (next) {
 // Mobile swipe navigation
 const isMobile = () => window.matchMedia('(max-width: 600px)').matches;
 
-let currentIndex = 0;
-
-// Find the current month's index (or closest future month)
-const todayYear = today.getFullYear();
-const todayMonth = today.getMonth() + 1;
-const currentMonthIdx = months.findIndex(([y, m]) => y === todayYear && m === todayMonth);
-if (currentMonthIdx !== -1) {
-  currentIndex = currentMonthIdx;
-} else {
-  // Find the nearest future month
-  const nearest = months.findIndex(([y, m]) => y > todayYear || (y === todayYear && m >= todayMonth));
-  currentIndex = nearest !== -1 ? nearest : months.length - 1;
-}
-
 const indicator = document.getElementById('month-indicator');
 const prevBtn = document.getElementById('prev-month');
 const nextBtn = document.getElementById('next-month');
 
-let dragging = false;
-let dragOffset = 0;
-
-function setTranslate(offset, animate) {
-  cards.forEach(c => {
-    c.style.transition = animate ? 'transform 0.35s cubic-bezier(0.4, 0, 0.2, 1)' : 'none';
-    c.style.transform = `translateX(calc(-${currentIndex * 100}% + ${offset}px))`;
-  });
+// Find current month index
+const todayYear = today.getFullYear();
+const todayMonth = today.getMonth() + 1;
+let currentIndex = months.findIndex(([y, m]) => y === todayYear && m === todayMonth);
+if (currentIndex === -1) {
+  const nearest = months.findIndex(([y, m]) => y > todayYear || (y === todayYear && m >= todayMonth));
+  currentIndex = nearest !== -1 ? nearest : months.length - 1;
 }
 
-function showMonth(idx, animate = true) {
-  currentIndex = Math.max(0, Math.min(idx, cards.length - 1));
-  setTranslate(0, animate);
+function moveTrack(offsetPx, animate) {
+  const vw = track.parentElement.offsetWidth;
+  const pos = -currentIndex * vw + offsetPx;
+  track.style.transition = animate ? 'transform 0.35s cubic-bezier(0.25, 1, 0.5, 1)' : 'none';
+  track.style.transform = `translateX(${pos}px)`;
+}
+
+function showMonth(idx, animate) {
+  currentIndex = Math.max(0, Math.min(idx, months.length - 1));
+  moveTrack(0, animate !== false);
   const [y, m] = months[currentIndex];
   indicator.textContent = `${monthNames[m]} ${y}`;
   prevBtn.disabled = currentIndex === 0;
-  nextBtn.disabled = currentIndex === cards.length - 1;
+  nextBtn.disabled = currentIndex === months.length - 1;
 }
 
 prevBtn.addEventListener('click', () => showMonth(currentIndex - 1));
 nextBtn.addEventListener('click', () => showMonth(currentIndex + 1));
 
-// Touch swipe handling with live drag
+// Touch handling
 let touchStartX = 0;
 let touchStartY = 0;
-let directionLocked = false;
-let isHorizontal = false;
+let dragging = false;
+let dirLocked = false;
+let isHoriz = false;
 
-calendarEl.addEventListener('touchstart', e => {
+track.addEventListener('touchstart', e => {
   if (!isMobile()) return;
   touchStartX = e.touches[0].clientX;
   touchStartY = e.touches[0].clientY;
   dragging = true;
-  directionLocked = false;
-  isHorizontal = false;
-  dragOffset = 0;
+  dirLocked = false;
+  isHoriz = false;
+  // Kill any in-progress animation so drag feels instant
+  track.style.transition = 'none';
 }, { passive: true });
 
-calendarEl.addEventListener('touchmove', e => {
+track.addEventListener('touchmove', e => {
   if (!dragging || !isMobile()) return;
   const dx = e.touches[0].clientX - touchStartX;
   const dy = e.touches[0].clientY - touchStartY;
 
-  if (!directionLocked) {
+  if (!dirLocked) {
     if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
-      directionLocked = true;
-      isHorizontal = Math.abs(dx) > Math.abs(dy);
+      dirLocked = true;
+      isHoriz = Math.abs(dx) > Math.abs(dy);
     }
     return;
   }
-
-  if (!isHorizontal) return;
+  if (!isHoriz) return;
 
   e.preventDefault();
 
-  // Dampen drag at edges
-  if ((currentIndex === 0 && dx > 0) || (currentIndex === cards.length - 1 && dx < 0)) {
-    dragOffset = dx * 0.3;
-  } else {
-    dragOffset = dx;
+  // Rubber-band at edges
+  let offset = dx;
+  if ((currentIndex === 0 && dx > 0) || (currentIndex === months.length - 1 && dx < 0)) {
+    offset = dx * 0.25;
   }
-  setTranslate(dragOffset, false);
+  moveTrack(offset, false);
 }, { passive: false });
 
-calendarEl.addEventListener('touchend', e => {
-  if (!dragging || !isMobile()) return;
+track.addEventListener('touchend', e => {
+  if (!dragging || !isMobile()) { dragging = false; return; }
   dragging = false;
-
-  if (!isHorizontal) return;
+  if (!isHoriz) return;
 
   const dx = e.changedTouches[0].clientX - touchStartX;
-  // Swipe if dragged > 25% of screen width or with enough velocity
-  if (Math.abs(dx) > window.innerWidth * 0.25) {
-    if (dx < 0) showMonth(currentIndex + 1);
-    else showMonth(currentIndex - 1);
+  const threshold = track.parentElement.offsetWidth * 0.25;
+
+  if (dx < -threshold && currentIndex < months.length - 1) {
+    showMonth(currentIndex + 1);
+  } else if (dx > threshold && currentIndex > 0) {
+    showMonth(currentIndex - 1);
   } else {
-    showMonth(currentIndex); // snap back
+    moveTrack(0, true); // snap back
   }
-  dragOffset = 0;
 }, { passive: true });
 
-// Initialize mobile view
+// Init
 if (isMobile()) showMonth(currentIndex, false);
 
 window.addEventListener('resize', () => {
   if (isMobile()) {
     showMonth(currentIndex, false);
   } else {
-    cards.forEach(c => {
-      c.style.transition = '';
-      c.style.transform = '';
-    });
+    track.style.transition = '';
+    track.style.transform = '';
   }
 });
 </script>
