@@ -184,13 +184,12 @@
       display: flex;
       overflow: hidden;
       position: relative;
-      touch-action: pan-y;
     }
 
     .month-card {
       min-width: 100%;
       flex-shrink: 0;
-      transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+      will-change: transform;
     }
 
     .month-nav {
@@ -479,6 +478,8 @@ calendarEl.addEventListener('touchmove', e => {
 
   if (!isHorizontal) return;
 
+  e.preventDefault();
+
   // Dampen drag at edges
   if ((currentIndex === 0 && dx > 0) || (currentIndex === cards.length - 1 && dx < 0)) {
     dragOffset = dx * 0.3;
@@ -486,7 +487,7 @@ calendarEl.addEventListener('touchmove', e => {
     dragOffset = dx;
   }
   setTranslate(dragOffset, false);
-}, { passive: true });
+}, { passive: false });
 
 calendarEl.addEventListener('touchend', e => {
   if (!dragging || !isMobile()) return;

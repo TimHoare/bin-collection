@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bin-calendar-v3';
+const CACHE_NAME = 'bin-calendar-v4';
 const ASSETS = [
   './',
   './index.html',
