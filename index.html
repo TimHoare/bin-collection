@@ -19,6 +19,7 @@
     background: #f5f5f0;
     color: #1a1a1a;
     padding: 2rem 1rem;
+    overflow-x: hidden;
   }
 
   h1 {
@@ -59,6 +60,7 @@
   .legend-dot.green { background: #2d8a4e; }
   .legend-dot.black { background: #1a1a1a; }
 
+  /* Desktop: grid layout as before */
   .calendar-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -171,6 +173,76 @@
   .next-collection.black { background: #1a1a1a; color: #fff; }
 
   .next-wrapper { text-align: center; }
+
+  /* Mobile swipe navigation */
+  .month-nav {
+    display: none;
+  }
+
+  @media (max-width: 600px) {
+    .calendar-grid {
+      display: block;
+      position: relative;
+      touch-action: pan-y;
+    }
+
+    .month-card {
+      display: none;
+    }
+
+    .month-card.active {
+      display: block;
+    }
+
+    .month-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      max-width: 400px;
+      margin: 0 auto 1rem;
+    }
+
+    .month-nav button {
+      background: none;
+      border: 2px solid #ccc;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      font-size: 1.2rem;
+      color: #333;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: border-color 0.2s, background 0.2s;
+    }
+
+    .month-nav button:active {
+      background: #e8e8e8;
+    }
+
+    .month-nav button:disabled {
+      opacity: 0.3;
+      cursor: default;
+    }
+
+    .month-nav .month-indicator {
+      font-weight: 600;
+      font-size: 0.85rem;
+      color: #666;
+    }
+
+    .swipe-hint {
+      text-align: center;
+      color: #aaa;
+      font-size: 0.75rem;
+      margin-bottom: 0.5rem;
+    }
+  }
+
+  @media (min-width: 601px) {
+    .swipe-hint { display: none; }
+  }
 </style>
 </head>
 <body>
@@ -185,6 +257,13 @@
 
 <div class="next-wrapper" id="next-collection"></div>
 
+<div class="month-nav" id="month-nav">
+  <button id="prev-month" aria-label="Previous month">&#8249;</button>
+  <span class="month-indicator" id="month-indicator"></span>
+  <button id="next-month" aria-label="Next month">&#8250;</button>
+</div>
+<p class="swipe-hint">Swipe left or right to change month</p>
+
 <div class="calendar-grid" id="calendar"></div>
 
 <p class="note">
@@ -194,64 +273,36 @@
 
 <script>
 const greenDates = [
-  // Feb 2026
   [2026,2,4],[2026,2,18],
-  // Mar 2026
   [2026,3,4],[2026,3,18],
-  // Apr 2026
   [2026,4,1],[2026,4,15],[2026,4,29],
-  // May 2026
   [2026,5,13],[2026,5,28],
-  // Jun 2026
   [2026,6,10],[2026,6,24],
-  // Jul 2026
   [2026,7,8],[2026,7,22],
-  // Aug 2026
   [2026,8,5],[2026,8,19],
-  // Sep 2026
   [2026,9,3],[2026,9,16],[2026,9,30],
-  // Oct 2026
   [2026,10,14],[2026,10,28],
-  // Nov 2026
   [2026,11,11],[2026,11,25],
-  // Dec 2026
   [2026,12,9],[2026,12,23],
-  // Jan 2027
   [2027,1,8],[2027,1,20],
-  // Feb 2027
   [2027,2,3],[2027,2,17],
-  // Mar 2027
   [2027,3,3],[2027,3,17],
 ];
 
 const blackDates = [
-  // Feb 2026
   [2026,2,11],[2026,2,25],
-  // Mar 2026
   [2026,3,11],[2026,3,25],
-  // Apr 2026
   [2026,4,9],[2026,4,22],
-  // May 2026
   [2026,5,7],[2026,5,20],
-  // Jun 2026
   [2026,6,3],[2026,6,17],
-  // Jul 2026
   [2026,7,1],[2026,7,15],[2026,7,29],
-  // Aug 2026
   [2026,8,12],[2026,8,26],
-  // Sep 2026
   [2026,9,9],[2026,9,23],
-  // Oct 2026
   [2026,10,7],[2026,10,21],
-  // Nov 2026
   [2026,11,4],[2026,11,18],
-  // Dec 2026
   [2026,12,2],[2026,12,16],
-  // Jan 2027
   [2027,1,2],[2027,1,14],[2027,1,27],
-  // Feb 2027
   [2027,2,10],[2027,2,24],
-  // Mar 2027
   [2027,3,10],[2027,3,24],
 ];
 
@@ -280,10 +331,12 @@ const today = new Date();
 const todayKey = toKey(today.getFullYear(), today.getMonth()+1, today.getDate());
 
 const calendarEl = document.getElementById('calendar');
+const cards = [];
 
-months.forEach(([year, month]) => {
+months.forEach(([year, month], idx) => {
   const card = document.createElement('div');
   card.className = 'month-card';
+  card.dataset.index = idx;
 
   const title = document.createElement('div');
   title.className = 'month-title';
@@ -303,7 +356,6 @@ months.forEach(([year, month]) => {
   grid.className = 'days-grid';
 
   const firstDay = new Date(year, month - 1, 1);
-  // JS: 0=Sun, we want 0=Mon
   let startDay = (firstDay.getDay() + 6) % 7;
   const daysInMonth = new Date(year, month, 0).getDate();
 
@@ -331,6 +383,7 @@ months.forEach(([year, month]) => {
 
   card.appendChild(grid);
   calendarEl.appendChild(card);
+  cards.push(card);
 });
 
 // Next collection banner
@@ -352,6 +405,70 @@ if (next) {
   div.innerHTML = `Next: ${next.label} &mdash; ${next.date.toLocaleDateString('en-GB', opts)} (${when})`;
   el.appendChild(div);
 }
+
+// Mobile swipe navigation
+const isMobile = () => window.matchMedia('(max-width: 600px)').matches;
+
+let currentIndex = 0;
+
+// Find the current month's index (or closest future month)
+const todayYear = today.getFullYear();
+const todayMonth = today.getMonth() + 1;
+const currentMonthIdx = months.findIndex(([y, m]) => y === todayYear && m === todayMonth);
+if (currentMonthIdx !== -1) {
+  currentIndex = currentMonthIdx;
+} else {
+  // Find the nearest future month
+  const nearest = months.findIndex(([y, m]) => y > todayYear || (y === todayYear && m >= todayMonth));
+  currentIndex = nearest !== -1 ? nearest : months.length - 1;
+}
+
+const indicator = document.getElementById('month-indicator');
+const prevBtn = document.getElementById('prev-month');
+const nextBtn = document.getElementById('next-month');
+
+function showMonth(idx) {
+  currentIndex = Math.max(0, Math.min(idx, cards.length - 1));
+  cards.forEach((c, i) => c.classList.toggle('active', i === currentIndex));
+  const [y, m] = months[currentIndex];
+  indicator.textContent = `${monthNames[m]} ${y}`;
+  prevBtn.disabled = currentIndex === 0;
+  nextBtn.disabled = currentIndex === cards.length - 1;
+}
+
+prevBtn.addEventListener('click', () => showMonth(currentIndex - 1));
+nextBtn.addEventListener('click', () => showMonth(currentIndex + 1));
+
+// Touch swipe handling
+let touchStartX = 0;
+let touchStartY = 0;
+
+calendarEl.addEventListener('touchstart', e => {
+  touchStartX = e.touches[0].clientX;
+  touchStartY = e.touches[0].clientY;
+}, { passive: true });
+
+calendarEl.addEventListener('touchend', e => {
+  if (!isMobile()) return;
+  const dx = e.changedTouches[0].clientX - touchStartX;
+  const dy = e.changedTouches[0].clientY - touchStartY;
+  // Only swipe if horizontal movement is dominant and > 50px
+  if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+    if (dx < 0) showMonth(currentIndex + 1);
+    else showMonth(currentIndex - 1);
+  }
+}, { passive: true });
+
+// Initialize mobile view
+if (isMobile()) showMonth(currentIndex);
+
+window.addEventListener('resize', () => {
+  if (isMobile()) {
+    showMonth(currentIndex);
+  } else {
+    cards.forEach(c => c.classList.remove('active'));
+  }
+});
 </script>
 <script>
 if ('serviceWorker' in navigator) {
