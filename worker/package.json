@@ -1,0 +1,16 @@
+{
+  "name": "bin-collection-push",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev"
+  },
+  "dependencies": {
+    "@pushforge/builder": "^2.0.2"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}

@@ -160,6 +160,42 @@
 
   .note span { color: #ffd700; font-weight: 700; }
 
+  .notify-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .notify-btn {
+    background: #fff;
+    border: 2px solid #ccc;
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #333;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .notify-btn:hover { border-color: #2d8a4e; color: #2d8a4e; }
+
+  .notify-btn.active {
+    background: #2d8a4e;
+    border-color: #2d8a4e;
+    color: #fff;
+  }
+
+  .notify-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .notify-status {
+    font-size: 0.75rem;
+    color: #888;
+  }
+
   .next-collection {
     text-align: center;
     margin-bottom: 2rem;
@@ -247,6 +283,11 @@
 </div>
 
 <div class="next-wrapper" id="next-collection"></div>
+
+<div class="notify-toggle" id="notify-toggle" style="display:none">
+  <button class="notify-btn" id="notify-btn">Enable reminders</button>
+  <span class="notify-status" id="notify-status"></span>
+</div>
 
 <div class="month-nav" id="month-nav">
   <button id="prev-month" aria-label="Previous month">&#8249;</button>
@@ -503,9 +544,75 @@ window.addEventListener('resize', () => {
 });
 </script>
 <script>
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js');
-}
+const WORKER_URL = 'https://bin-collection-push.timbo-hoare.workers.dev';
+const VAPID_PUBLIC_KEY = 'BPK7tkq2TNezvOTnhvBl3YSerg4hjG03EZ_lGWmrvQ9MFv0o4mTk4ZGAY_mVL1I5hve4ZNoMsXoO4vhlNTJuiKk';
+
+(async function initNotifications() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+
+  const registration = await navigator.serviceWorker.register('sw.js');
+  await navigator.serviceWorker.ready;
+
+  const toggle = document.getElementById('notify-toggle');
+  const btn = document.getElementById('notify-btn');
+  const status = document.getElementById('notify-status');
+  toggle.style.display = 'flex';
+
+  // Check existing subscription
+  const existing = await registration.pushManager.getSubscription();
+  if (existing) {
+    btn.textContent = 'Disable reminders';
+    btn.classList.add('active');
+    status.textContent = 'You\u2019ll get a reminder at 7pm the evening before';
+  }
+
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    try {
+      const current = await registration.pushManager.getSubscription();
+
+      if (current) {
+        // Unsubscribe
+        await fetch(`${WORKER_URL}/unsubscribe`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint: current.endpoint }),
+        });
+        await current.unsubscribe();
+        btn.textContent = 'Enable reminders';
+        btn.classList.remove('active');
+        status.textContent = '';
+      } else {
+        // Subscribe
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') {
+          status.textContent = 'Notifications blocked — check browser settings';
+          btn.disabled = false;
+          return;
+        }
+
+        const subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: VAPID_PUBLIC_KEY,
+        });
+
+        await fetch(`${WORKER_URL}/subscribe`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(subscription.toJSON()),
+        });
+
+        btn.textContent = 'Disable reminders';
+        btn.classList.add('active');
+        status.textContent = 'You\u2019ll get a reminder at 7pm the evening before';
+      }
+    } catch (err) {
+      console.error('Notification setup failed:', err);
+      status.textContent = 'Something went wrong — try again';
+    }
+    btn.disabled = false;
+  });
+})();
 </script>
 </body>
 </html>

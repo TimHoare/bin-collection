@@ -1,0 +1,14 @@
+name = "bin-collection-push"
+main = "src/index.js"
+compatibility_date = "2024-12-01"
+
+[triggers]
+crons = ["0 18 * * *", "0 19 * * *"]
+
+[[kv_namespaces]]
+binding = "PUSH_SUBS"
+id = "192871aa671948d9b4a08e0d83702528"
+
+[vars]
+VAPID_PUBLIC_KEY = "BPK7tkq2TNezvOTnhvBl3YSerg4hjG03EZ_lGWmrvQ9MFv0o4mTk4ZGAY_mVL1I5hve4ZNoMsXoO4vhlNTJuiKk"
+ALLOWED_ORIGIN = "https://timhoare.github.io"
