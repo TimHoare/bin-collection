@@ -36,14 +36,15 @@ const blackDates = [
 ];
 
 function getTomorrowBinType() {
-  // Get tomorrow's date in UK time
   const now = new Date();
-  const ukTime = new Date(now.toLocaleString("en-GB", { timeZone: "Europe/London" }));
-  const tomorrow = new Date(ukTime);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const y = tomorrow.getFullYear();
-  const m = tomorrow.getMonth() + 1;
-  const d = tomorrow.getDate();
+  now.setDate(now.getDate() + 1);
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/London",
+    year: "numeric", month: "numeric", day: "numeric",
+  }).formatToParts(now);
+  const y = +parts.find(p => p.type === "year").value;
+  const m = +parts.find(p => p.type === "month").value;
+  const d = +parts.find(p => p.type === "day").value;
 
   for (const [gy, gm, gd] of greenDates) {
     if (gy === y && gm === m && gd === d) return "green";
