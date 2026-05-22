@@ -1,4 +1,6 @@
-const CACHE_NAME = 'bin-calendar-v5';
+const CACHE_NAME = 'bin-calendar-v6';
+const WORKER_URL = 'https://bin-collection-push.timbo-hoare.workers.dev';
+const VAPID_PUBLIC_KEY = 'BPK7tkq2TNezvOTnhvBl3YSerg4hjG03EZ_lGWmrvQ9MFv0o4mTk4ZGAY_mVL1I5hve4ZNoMsXoO4vhlNTJuiKk';
 const ASSETS = [
   './',
   './index.html',
@@ -43,6 +45,35 @@ self.addEventListener('push', e => {
       data: { url: data.url || './' },
     })
   );
+});
+
+// The push service can rotate a subscription (browser/Play Services updates,
+// cache clears). The browser fires this event; without it the worker keeps the
+// dead endpoint, which FCM accepts (201) but never delivers. Re-subscribe and
+// re-register the fresh endpoint, and clean up the old one.
+self.addEventListener('pushsubscriptionchange', e => {
+  e.waitUntil((async () => {
+    try {
+      if (e.oldSubscription?.endpoint) {
+        await fetch(`${WORKER_URL}/unsubscribe`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint: e.oldSubscription.endpoint }),
+        });
+      }
+      const sub = e.newSubscription || await self.registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: VAPID_PUBLIC_KEY,
+      });
+      await fetch(`${WORKER_URL}/subscribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(sub.toJSON()),
+      });
+    } catch (err) {
+      console.error('pushsubscriptionchange re-subscribe failed:', err);
+    }
+  })());
 });
 
 self.addEventListener('notificationclick', e => {

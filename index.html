@@ -561,6 +561,19 @@ const VAPID_PUBLIC_KEY = 'BPK7tkq2TNezvOTnhvBl3YSerg4hjG03EZ_lGWmrvQ9MFv0o4mTk4Z
   // Check existing subscription
   const existing = await registration.pushManager.getSubscription();
   if (existing) {
+    // Re-register on every load: the worker drops endpoints on 410/404, and an
+    // endpoint can go stale (FCM still 201s but never delivers) without the
+    // browser invalidating the local subscription. /subscribe is keyed by the
+    // hashed endpoint, so re-POSTing is idempotent and self-heals KV.
+    try {
+      await fetch(`${WORKER_URL}/subscribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(existing.toJSON()),
+      });
+    } catch (err) {
+      console.error('Subscription re-sync failed:', err);
+    }
     btn.textContent = 'Disable reminders';
     btn.classList.add('active');
     status.textContent = 'You\u2019ll get a reminder at 7pm the evening before';
