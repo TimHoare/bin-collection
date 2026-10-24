@@ -117,7 +117,9 @@ async function sendPushToAll(env, binType) {
         message: {
           payload,
           adminContact: "mailto:noreply@timhoare.github.io",
-          options: { ttl: 3600, urgency: "high" },
+          // Keep trying until ~11pm: a phone that's offline or in deep sleep
+          // at 7pm would otherwise miss the reminder after just an hour.
+          options: { ttl: 4 * 3600, urgency: "high" },
         },
       });
 

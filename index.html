@@ -162,8 +162,10 @@
 
   .notify-toggle {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: center;
+    text-align: center;
     gap: 0.5rem;
     margin-bottom: 1.5rem;
   }
@@ -189,12 +191,19 @@
     color: #fff;
   }
 
+  .notify-btn.warning {
+    border-color: #c0392b;
+    color: #c0392b;
+  }
+
   .notify-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
   .notify-status {
     font-size: 0.75rem;
     color: #888;
   }
+
+  .notify-status.warning { color: #c0392b; }
 
   .next-collection {
     text-align: center;
@@ -547,6 +556,13 @@ window.addEventListener('resize', () => {
 const WORKER_URL = 'https://bin-collection-push.timbo-hoare.workers.dev';
 const VAPID_PUBLIC_KEY = 'BPK7tkq2TNezvOTnhvBl3YSerg4hjG03EZ_lGWmrvQ9MFv0o4mTk4ZGAY_mVL1I5hve4ZNoMsXoO4vhlNTJuiKk';
 
+// Set when the user turns reminders on, cleared when they turn them off. Lets us
+// tell "never enabled" apart from "enabled, but the subscription was lost" —
+// Android can revoke the notification permission of an installed PWA it thinks
+// is unused (receiving notifications doesn't count as use), and Chrome then
+// silently drops the push subscription.
+const OPT_IN_KEY = 'remindersOptIn';
+
 (async function initNotifications() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
 
@@ -558,33 +574,97 @@ const VAPID_PUBLIC_KEY = 'BPK7tkq2TNezvOTnhvBl3YSerg4hjG03EZ_lGWmrvQ9MFv0o4mTk4Z
   const status = document.getElementById('notify-status');
   toggle.style.display = 'flex';
 
-  // Check existing subscription
-  const existing = await registration.pushManager.getSubscription();
-  if (existing) {
-    // Re-register on every load: the worker drops endpoints on 410/404, and an
-    // endpoint can go stale (FCM still 201s but never delivers) without the
-    // browser invalidating the local subscription. /subscribe is keyed by the
-    // hashed endpoint, so re-POSTing is idempotent and self-heals KV.
-    try {
-      await fetch(`${WORKER_URL}/subscribe`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(existing.toJSON()),
-      });
-    } catch (err) {
-      console.error('Subscription re-sync failed:', err);
+  function render(state) {
+    btn.classList.toggle('active', state === 'on');
+    btn.classList.toggle('warning', state === 'lost');
+    status.classList.toggle('warning', state === 'lost');
+    if (state === 'on') {
+      btn.textContent = 'Disable reminders';
+      status.textContent = 'You’ll get a reminder at 7pm the evening before';
+    } else if (state === 'lost') {
+      btn.textContent = 'Turn reminders back on';
+      status.textContent = 'Reminders were switched off by your phone';
+    } else {
+      btn.textContent = 'Enable reminders';
+      status.textContent = '';
     }
-    btn.textContent = 'Disable reminders';
-    btn.classList.add('active');
-    status.textContent = 'You\u2019ll get a reminder at 7pm the evening before';
   }
+
+  async function register(subscription) {
+    await fetch(`${WORKER_URL}/subscribe`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(subscription.toJSON()),
+    });
+  }
+
+  async function subscribe() {
+    const subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: VAPID_PUBLIC_KEY,
+    });
+    await register(subscription);
+  }
+
+  // Reconcile local state with the push service. Runs on load and whenever the
+  // app returns to the foreground — Android usually resumes an installed PWA
+  // rather than reloading it, so load alone rarely fires.
+  async function sync() {
+    const existing = await registration.pushManager.getSubscription();
+    const granted = Notification.permission === 'granted';
+
+    if (existing && granted) {
+      localStorage.setItem(OPT_IN_KEY, '1');
+      render('on');
+      // Re-register every time: the worker drops endpoints on 410/404, and an
+      // endpoint can go stale (FCM still 201s but never delivers) without the
+      // browser invalidating the local subscription. /subscribe is keyed by the
+      // hashed endpoint, so re-POSTing is idempotent and self-heals KV.
+      try {
+        await register(existing);
+      } catch (err) {
+        console.error('Subscription re-sync failed:', err);
+      }
+      return;
+    }
+
+    if (localStorage.getItem(OPT_IN_KEY) !== '1') {
+      render('off');
+      return;
+    }
+
+    // The user opted in but the subscription is gone. If permission is still
+    // granted we can quietly re-subscribe without a prompt.
+    if (granted) {
+      try {
+        await subscribe();
+        render('on');
+        return;
+      } catch (err) {
+        console.error('Silent re-subscribe failed:', err);
+      }
+    }
+    render('lost');
+  }
+
+  let syncing = null;
+  function resync() {
+    if (!syncing) syncing = sync().finally(() => { syncing = null; });
+    return syncing;
+  }
+
+  await resync();
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') resync();
+  });
 
   btn.addEventListener('click', async () => {
     btn.disabled = true;
     try {
+      await syncing;
       const current = await registration.pushManager.getSubscription();
 
-      if (current) {
+      if (current && btn.classList.contains('active')) {
         // Unsubscribe
         await fetch(`${WORKER_URL}/unsubscribe`, {
           method: 'POST',
@@ -592,32 +672,21 @@ const VAPID_PUBLIC_KEY = 'BPK7tkq2TNezvOTnhvBl3YSerg4hjG03EZ_lGWmrvQ9MFv0o4mTk4Z
           body: JSON.stringify({ endpoint: current.endpoint }),
         });
         await current.unsubscribe();
-        btn.textContent = 'Enable reminders';
-        btn.classList.remove('active');
-        status.textContent = '';
+        localStorage.removeItem(OPT_IN_KEY);
+        render('off');
       } else {
         // Subscribe
         const permission = await Notification.requestPermission();
         if (permission !== 'granted') {
-          status.textContent = 'Notifications blocked — check browser settings';
+          status.classList.add('warning');
+          status.textContent = 'Notifications are blocked — allow them in your phone’s Settings › Apps › Bin Day › Notifications';
           btn.disabled = false;
           return;
         }
 
-        const subscription = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: VAPID_PUBLIC_KEY,
-        });
-
-        await fetch(`${WORKER_URL}/subscribe`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(subscription.toJSON()),
-        });
-
-        btn.textContent = 'Disable reminders';
-        btn.classList.add('active');
-        status.textContent = 'You\u2019ll get a reminder at 7pm the evening before';
+        await subscribe();
+        localStorage.setItem(OPT_IN_KEY, '1');
+        render('on');
       }
     } catch (err) {
       console.error('Notification setup failed:', err);

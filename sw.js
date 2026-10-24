@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bin-calendar-v6';
+const CACHE_NAME = 'bin-calendar-v7';
 const WORKER_URL = 'https://bin-collection-push.timbo-hoare.workers.dev';
 const VAPID_PUBLIC_KEY = 'BPK7tkq2TNezvOTnhvBl3YSerg4hjG03EZ_lGWmrvQ9MFv0o4mTk4ZGAY_mVL1I5hve4ZNoMsXoO4vhlNTJuiKk';
 const ASSETS = [
@@ -36,7 +36,14 @@ self.addEventListener('fetch', e => {
 });
 
 self.addEventListener('push', e => {
-  const data = e.data ? e.data.json() : {};
+  // Always show a notification, even for an unreadable payload: a push that
+  // ends without one counts against the site and can get it throttled.
+  let data = {};
+  try {
+    data = e.data ? e.data.json() : {};
+  } catch (err) {
+    console.error('Bad push payload:', err);
+  }
   e.waitUntil(
     self.registration.showNotification(data.title || 'Bin Day', {
       body: data.body || 'Check your bin collection schedule',
