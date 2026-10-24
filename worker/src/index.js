@@ -55,10 +55,10 @@ function getTomorrowBinType() {
   return null;
 }
 
-function isUK7pm() {
+function isUKNoon() {
   const now = new Date();
   const ukHour = parseInt(now.toLocaleString("en-GB", { timeZone: "Europe/London", hour: "numeric", hour12: false }));
-  return ukHour === 19;
+  return ukHour === 12;
 }
 
 function corsHeaders(env) {
@@ -117,9 +117,9 @@ async function sendPushToAll(env, binType) {
         message: {
           payload,
           adminContact: "mailto:noreply@timhoare.github.io",
-          // Keep trying until ~11pm: a phone that's offline or in deep sleep
-          // at 7pm would otherwise miss the reminder after just an hour.
-          options: { ttl: 4 * 3600, urgency: "high" },
+          // Keep trying until ~8pm: a phone that's offline or in deep sleep
+          // at noon would otherwise miss the reminder after just an hour.
+          options: { ttl: 8 * 3600, urgency: "high" },
         },
       });
 
@@ -168,8 +168,8 @@ export default {
   },
 
   async scheduled(event, env, ctx) {
-    // Only send at 7pm UK time (cron fires at both 18:00 and 19:00 UTC to cover BST/GMT)
-    if (!isUK7pm()) return;
+    // Only send at 12pm UK time (cron fires at both 11:00 and 12:00 UTC to cover BST/GMT)
+    if (!isUKNoon()) return;
 
     const binType = getTomorrowBinType();
     if (!binType) return;
